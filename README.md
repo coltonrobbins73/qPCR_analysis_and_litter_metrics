@@ -1,42 +1,68 @@
-# README for qPCR Analysis Script
+# README for qPCR Analysis and Litter Metrics Streamlit App
 
 ## Overview
-This script is designed for automated analysis of qPCR data. It includes a graphical user interface (GUI) for parameter input, data cleaning, statistical analysis, and visualization of qPCR results. The script handles data processing, including normalization and delta-delta CT (ddCT) calculations, and generates plots for various metrics like CT, 2^-CT, ddCT, and more.
+This combined document provides information for two distinct scripts: a qPCR Analysis script and a Litter Metrics Streamlit App. The qPCR Analysis script is designed for automated analysis of qPCR data, including data cleaning, statistical analysis, and visualization. The Litter Metrics Streamlit App analyzes and visualizes genetic data related to litter metrics in animal studies, offering interactive charts and calculations.
 
-## Requirements
+## qPCR Analysis Script
+
+### Requirements
 - Python 3.x
 - Libraries: PySimpleGUI, pandas, numpy, seaborn, matplotlib, openpyxl, statistics, os
 - An Excel file containing qPCR data in a specific format
 
-## Installation
-1. Ensure Python 3.x is installed on your system.
-2. Install required libraries using pip:
+### Installation
+1. Ensure Python 3.x is installed.
+2. Install required libraries:
    ```
    pip install PySimpleGUI pandas numpy seaborn matplotlib openpyxl statistics
    ```
 
-## Usage
+### Usage
 1. Run the script.
-2. If using the `MainUI` class, a GUI will appear for parameter input. If using the `Test` class, parameters are predefined.
-3. Specify the following parameters:
-   - Input file path (Excel file with qPCR data)
-   - Output directory (for saving results and plots)
-   - Replicate labels file (optional, for custom labels)
-   - ddCT calculation method
-   - Number of biological replicates
-   - Parental control check (boolean)
-4. Click 'Run' to start the analysis.
-5. The script will process the data and save results and plots in the specified output directory.
+2. Input parameters via GUI or predefined in the script.
+3. Script processes data and saves results and plots in specified directory.
 
-## Features
-- Data cleaning and normalization for qPCR analysis
-- Calculation of median, standard deviation, and mean for CT values
-- Delta CT (dCT) and delta-delta CT (ddCT) calculations
-- Generation of box plots for various metrics like CT, 2^-CT, dCT, 2^-dCT, ddCT, and 2^-ddCT
-- Export of cleaned and analyzed data to an Excel file
-- Conditional formatting in Excel for visual data inspection
+### Features
+- Data cleaning and normalization.
+- Calculation of CT, 2^-CT, dCT, 2^-dCT, ddCT, and 2^-ddCT.
+- Box plot generation.
+- Export of results to Excel.
 
-## Notes
-- Ensure the input Excel file is in the correct format as expected by the script.
-- The script is configured for specific gene targets and may need adjustments for different datasets or gene panels.
-- The GUI functionality can be enabled or disabled by using the `MainUI` or `Test` class, respectively.
+### Notes
+- Ensure input Excel file is in correct format.
+- Script is configured for specific gene targets.
+
+## Litter Metrics Streamlit App
+
+### Requirements
+- Python 3.x
+- Libraries: pandas, streamlit, plotly.express, numpy, scipy, altair
+- A CSV file containing genetic data
+
+### Installation
+1. Ensure Python 3.x is installed.
+2. Install required libraries:
+   ```
+   pip install pandas streamlit plotly.express numpy scipy altair
+   ```
+
+### Usage
+1. Run the Streamlit app:
+   ```
+   streamlit run <path_to_script>
+   ```
+2. Upload a CSV file in the app.
+3. App processes data and displays interactive charts.
+
+### Features
+- CSV file uploader.
+- Genotype ratio calculations.
+- Interactive charts for genotype distribution.
+- Hardy-Weinberg equilibrium analysis.
+- Chi-square test results.
+
+### Data Expectations
+- Input CSV should contain columns for parental genotypes, total pups, and genotype counts (wt, het, ko).
+
+## Customization
+Both scripts offer customization in terms of input parameters and styling. The Litter Metrics app allows dynamic updating of charts based on selected criteria.
