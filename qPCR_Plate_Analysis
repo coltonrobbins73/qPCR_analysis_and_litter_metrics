@@ -1,0 +1,440 @@
+print('Compiling packages and building GUI...')
+# import PySimpleGUI as sg
+import pandas as pd
+import numpy as np
+import pandas as pd
+import os
+import seaborn as sns
+import seaborn as sns
+import statistics
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.formatting.rule import DataBarRule
+from openpyxl.styles import Color
+
+class bcolors:
+    os.system("")
+    # set color codes for text
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+class MainUI:
+    """Main GUI window for SMI analysis package"""
+    def __init__(self):
+        self.input_file, self.output_directory, self.rep_labels, self.ddct_flavor, self.bio_rep_num, self.parental_control_check = self.__get_params()        
+
+    def __get_params(theme=None):
+        '''UI for parameter input'''
+
+        # tab5_layout = [
+        # [sg.InputText(r'C:\path\qPCR.xlsx', key='Run_directory'), sg.FileBrowse('Select qPCR output excel file')],
+        # [sg.InputText(r'C:\path_to_output_directory', key='Export_directory'), sg.FolderBrowse('Select output directory for graphs and tables')],
+        # [sg.Text('-' * 200)],
+        # [sg.T('General parameters')],
+        # [sg.T('------Biological replicates------')],
+        # [sg.Radio('Triplicate', 'reps', default=True, key = 'triplicate')],
+        # [sg.Radio('Duplicate', 'reps', default=False, key = 'duplicate')],
+        # [sg.Radio('Singleton', 'reps', default=False, key = 'singleton')],
+        # [sg.Text('-' * 200)],
+        # [sg.T('Parameters for ddct comparison')],
+        # [sg.T('------Paired------')],
+        # [sg.Radio('Treated vs untreated ', 'depth', default=True, key = 'paired')],
+        # [sg.T('')],
+        # [sg.T('-------Time-course------')],
+        # [sg.Radio('Control vs two time points--  (eg. 0, 24 and 48 hours)', 'depth', default=False, key = 'time_course_2')],
+        # [sg.Radio('Control vs three time points--  (eg. 0, 24, 48, and 72 hours)', 'depth', default=False, key = 'time_course_3')],
+        # [sg.Radio('Control vs four time points--  (eg. 0, 24, 48, 72, and 96 hours)', 'depth', default=False, key = 'time_course_4')],
+        # [sg.T('')],
+        # [sg.Checkbox('Do you have an additional parental control as well as a 0-hour control?', default=False, key = 'parental_control_check')],
+        # [sg.T('')],
+        # [sg.Text('-' * 200)],
+        # [sg.T('***Optional*** upload your biological replicate labels (will default to sequential numbering if no upload is present)')],
+        # [sg.InputText(r'C:\path\biological_replicate_labels.xlsx', key='Rep_labels'), sg.FileBrowse('Select excel with biological replicate info')],
+        # [sg.T('')],
+        # [sg.T('Example of entry excel file (don\'t forget to add the no RT control label)')],
+        # [sg.Table(values=[[1, 'MB135_untreated'], [2, 'MB135_treated'], [3, 'MB073_untreated'], [4, 'MB073_treated'], [5, 'No RT control']],
+        #     headings=['Biological replicate number' ,'Biological replicate label'],
+        #     max_col_width=65,
+        #     auto_size_columns=True,
+        #     justification='center',
+        #     enable_events=True,
+        #     num_rows=6, key='_filestable_')],
+        ]
+
+        layout = [
+        [sg.TabGroup([[
+                    sg.Tab('qPCR parameters', tab5_layout),
+                    ]])],
+        [sg.Button('Run'), sg.Button('Cancel')]]
+
+        window = sg.Window('Automated qPCR analysis', layout, finalize=True, right_click_menu=sg.MENU_RIGHT_CLICK_EDITME_VER_EXIT, keep_on_top=True)
+
+        while True:
+            event, values = window.read()
+            # sg.Print(event, values)
+            
+            # Save settings buttons
+            if event in ('Run', None):
+                break
+            elif event in ('Cancel', None):
+                os._exit(0)
+                break
+
+        window.CloseNonBlocking() 
+
+        # if values['Rep_labels'] == r'C:\path\biological_replicate_labels.xlsx':
+        #     values['Rep_labels'] = None
+
+        ddct_translate_dict = {'paired' : 2, 'time_course_2' : 3, 'time_course_3' : 4, 'time_course_4' : 5}
+        bio_rep_dict = {'triplicate' : 3, 'duplicate' : 2, 'singleton' : 1}
+
+        for key in ddct_translate_dict:
+            if values[key] == True:
+                ddct_flavor = ddct_translate_dict[key]
+
+        for key in bio_rep_dict:
+            if values[key] == True:
+                bio_rep_num = bio_rep_dict[key]
+
+
+        if values['Rep_labels'] == r'C:\path\biological_replicate_labels.xlsx':
+            values['Rep_labels'] = None
+
+        return values['Run_directory'], values['Export_directory'], values['Rep_labels'], ddct_flavor, bio_rep_num, values['parental_control_check']
+    
+class Analyze:
+    def __init__(self, input_file, output_directory, rep_labels, ddct_flavor, bio_rep_num, parental_control_check):
+
+        print('\n\nAnalyzing qPCR data...\n')
+
+        self.output_directory = output_directory
+        self.bio_rep_num = bio_rep_num
+
+        final_df = self.clean_df(input_file)
+        self.plot(final_df)
+
+    def clean_df(self, file_path):
+
+        # Read out first sheet of excel workbook
+        df = pd.read_excel(file_path, sheet_name = 'Results', engine = 'openpyxl')
+
+        # Find label of the first row where the value 'Test' is found (within column 0)
+        row_label = (df.iloc[:, 0] == 'Well').idxmax()
+
+        df = pd.read_excel(file_path, skiprows = range(row_label + 1), sheet_name = 'Results', engine = 'openpyxl')
+        # trim extraneous information
+        df = df[['Well Position', 'Sample Name', 'Target Name', 'CT', 'Tm1']]
+        # replace "Undetermined" values with 40
+        df['CT'] = df['CT'].replace('Undetermined', 40)
+        df = df.dropna()
+        orig_df = df
+        df = df.drop(['Well Position'], axis = 1)
+
+        # group by "Sample Name" and "Target Name" columns and calculate median/SD of every 3 values in the "CT" column
+        median_df = df.groupby(['Sample Name', 'Target Name'])['CT'].apply(lambda x: x.rolling(window=3).median().dropna())
+        mean_df = df.groupby(['Sample Name', 'Target Name'])['CT'].apply(lambda x: x.rolling(window=3).mean().dropna())
+        std_df = df.groupby(['Sample Name', 'Target Name'])['CT'].apply(lambda x: x.rolling(window=3).std().dropna())
+
+        df_metrics_dict = {'Median' : median_df, 'SD' : std_df, 'Mean' : mean_df}
+
+        def create_key(df):
+            df['key'] = df['Sample Name'].astype(str) + df['Target Name']
+            return df
+
+        for df in df_metrics_dict:
+            df_metrics_dict[df] = df_metrics_dict[df].reset_index().drop(columns = 'level_2')
+            df_metrics_dict[df] = create_key(pd.concat([df_metrics_dict[df]] * 3, ignore_index=True))
+            df_metrics_dict[df].rename(columns = {'CT' : df}, inplace = True) 
+        
+        ct_df = create_key(orig_df)
+
+        # merge median and std values
+        final_df = pd.merge(ct_df[['Well Position', 'Sample Name', 'Target Name', 'CT', 'key', 'Tm1']], df_metrics_dict['SD'][['SD', 'key']], on = 'key')
+        final_df = pd.merge(final_df[['Well Position', 'Sample Name', 'Target Name', 'CT', 'SD', 'key', 'Tm1']], df_metrics_dict['Median'][['Median', 'key']], on = 'key')
+        final_df = pd.merge(final_df[['Well Position', 'Sample Name', 'Target Name', 'CT', 'SD', 'key', 'Tm1', 'Median']], df_metrics_dict['Mean'][['Mean', 'key']], on = 'key')
+
+        # # reset index
+        # median_df = median_df.reset_index()
+        # std_df = std_df.reset_index()
+        # mean_df = median_df.reset_index()
+
+        final_df.drop(['key'], axis = 1, inplace = True)
+        final_df = final_df.drop_duplicates()
+        final_df = final_df.reset_index(drop = True)
+
+        rt_list = []
+        full_id_list = []
+        treat_list = []
+
+
+        for row in range(len(final_df)):
+            if 'NORT' in final_df['Sample Name'][row]:
+                rt_list.append('no')
+            else:
+                rt_list.append('yes')
+
+            if '+' in final_df['Sample Name'][row]:
+                treat_list.append('treated')
+            else:
+                treat_list.append('untreated')
+            full_id_list.append(final_df['Sample Name'][row] + '_' + final_df['Target Name'][row])
+
+
+        final_df['Treatment'] = treat_list
+        final_df['RT+'] = rt_list
+        final_df['Full_id'] = full_id_list
+
+
+        final_df = final_df.sort_values(by=['Sample Name', 'Well Position'], ascending=True)
+
+        # Now we need to create a new column 'RPL27_CT' which duplicates the 'CT' values only for samples with 'RPL27' gene.
+        # First, we create the new column with NaN values
+        final_df['RPL27_CT'] = pd.NA
+        # final_df['GAPDH_CT'] = pd.NA
+
+        # Then, we copy the 'CT' values to 'RPL27_CT' where 'Gene' is 'RPL27'
+        final_df.loc[final_df['Target Name'] == 'RPL27', 'RPL27_CT'] = final_df['Median']
+        # final_df.loc[final_df['Target Name'] == 'Gapdh', 'GAPDH_CT'] = final_df['Median']
+
+        hk_gene_list = ['RPL27']
+
+        for gene in hk_gene_list:
+            for sample in final_df['Sample Name'].unique():
+                query_df = final_df.loc[(final_df['Sample Name'] == sample) & (final_df['Target Name'] == gene)][gene.upper() + '_CT'].reset_index(drop = True)
+                final_df.loc[final_df['Sample Name'] == sample, gene.upper() + '_CT'] = query_df[0]
+
+        final_df = final_df.sort_values(by=['Target Name' ,'Sample Name'], ascending=True).reset_index(drop = True)
+
+        two_CT = []
+        rpl27_dCT = []
+        gapdh_dCT = []
+        two_rpl27_dct = []
+        two_gapdh_dct = []
+        id_label = []
+        for row in range(len(final_df)):
+
+            ct = final_df['CT'][row]
+            rpl27_ct = final_df['RPL27_CT'][row]
+            # gapdh_ct = final_df['GAPDH_CT'][row]
+            two_CT.append(2**-(ct))
+            rpl27_dCT.append(ct - rpl27_ct)
+            # gapdh_dCT.append(ct - gapdh_ct)
+            two_rpl27_dct.append(2**-(ct - rpl27_ct))
+            # two_gapdh_dct.append(2**-(ct - gapdh_ct))
+            id_label.append(final_df['Sample Name'][row][1:])
+
+        final_df['2^-CT'] = two_CT
+        final_df['RPL27_dCT'] = rpl27_dCT
+        # final_df['GAPDH_dCT'] = gapdh_dCT
+        final_df['RPL27_2^-dCT'] = two_rpl27_dct
+        # final_df['GAPDH_2^-dCT'] = two_gapdh_dct
+        final_df['Sample_label'] = id_label
+
+
+
+        dct_df = final_df.groupby(['Sample Name', 'Target Name'])['RPL27_dCT'].apply(lambda x: x.rolling(window=3).mean().dropna())
+
+        df_metrics_dict = {'RPL27_dCT_mean' : dct_df}
+
+        for df in df_metrics_dict:
+            df_metrics_dict[df] = df_metrics_dict[df].reset_index().drop(columns = 'level_2')
+            df_metrics_dict[df] = create_key(pd.concat([df_metrics_dict[df]] * 3, ignore_index=True))
+            df_metrics_dict[df].rename(columns = {'RPL27_dCT' : df}, inplace = True) 
+        
+        ct_df = create_key(orig_df)
+
+        # merge median and std values
+        ct_df = create_key(final_df)
+        columns = ct_df.columns.to_list()
+
+        final_df = pd.merge(ct_df[columns], df_metrics_dict['RPL27_dCT_mean'][['RPL27_dCT_mean', 'key']], on = 'key')
+
+        final_df.drop(['key'], axis = 1, inplace = True)
+        final_df = final_df.drop_duplicates()
+        final_df = final_df.reset_index(drop = True)
+
+        def expand_array(array):
+            array = array[:int(len(array)/3)]
+            add1_list = []
+            for element in array:
+                add1_list.append(element + 1)
+            expanded_array = []
+            # Iterate through each element in the array
+            for element in add1_list:
+                # Repeat each element three times and add it to the expanded array
+                expanded_array.append([element] * 3)
+            return expanded_array
+
+        def flatten_list(nested_list):
+            flat_list = []
+
+            for item in nested_list:
+                if isinstance(item, list):
+                    # If the item is a list, extend the flat list with the flattened item
+                    flat_list.extend(flatten_list(item))
+                else:
+                    # If the item is not a list, add it directly to the flat list
+                    flat_list.append(item)
+
+            return flat_list
+
+        count_array = flatten_list(expand_array(final_df.index.to_list()))
+
+        final_df = final_df.sort_values(by=['Sample_label', 'Target Name', 'Treatment'], ascending=True).reset_index(drop = True)
+        final_df['Helper'] = count_array 
+
+        ddCT = []
+        for row in range(len(final_df)):
+            if final_df['Helper'][row] % 2 == 1:
+                ddCT.append(final_df['RPL27_dCT'][row]-final_df['RPL27_dCT_mean'][row+3])
+            else:
+                ddCT.append(final_df['RPL27_dCT'][row]-final_df['RPL27_dCT_mean'][row])
+        final_df['ddCT'] = ddCT
+
+        two_ddct = []
+        for row in range(len(final_df)):
+            ddct_value = final_df['ddCT'][row]
+            two_ddct.append(2**-(ddct_value))
+
+        final_df['2^-ddCT'] = two_ddct
+
+        final_df = final_df.sort_values(by=['RT+', 'Helper'], ascending=[False, True]).reset_index(drop = True)
+
+        final_df = final_df.drop('Helper', axis = 1)
+        base_file_name = self.output_directory + '\\qPCR_analysis_QC.xlsx'
+        counter = 0
+
+
+
+        while True:
+            try:
+                if counter == 0:
+                    filename = base_file_name
+                else:
+                    filename = f"{base_file_name.split('.')[0]}_{counter}.xlsx"
+
+                # Create the output folder if it doesn't exist
+                if not os.path.exists(self.output_directory):
+                    os.makedirs(self.output_directory)
+
+                pd.DataFrame.to_excel(final_df, filename, engine = 'openpyxl', index=False)
+                print("QC file saved successfully as {}\n".format(filename))
+
+
+                # Load the workbook and select the active sheet
+                workbook = load_workbook(filename)
+                sheet = workbook.active
+
+                # Function to find the column letter based on column name
+                def find_column_letter(column_name):
+                    for column in range(1, sheet.max_column + 1):
+                        if sheet.cell(row=1, column=column).value == column_name:
+                            return get_column_letter(column)
+                    return None
+
+                # Dictionary mapping columns to their respective colors for data bars
+                columns_to_format = {
+                    'Tm1': 'FF638EC6',    # Blue
+                    'CT': 'FA8072',     # Salmon
+                    'SD': 'FF00B050',     # Green
+                    'Median': 'FF4500',    # Orange
+                    'Mean' : '874a97'
+                }
+
+                # Apply data bars to specified columns with corresponding colors
+                for column_name, color_hex in columns_to_format.items():
+                    column_letter = find_column_letter(column_name)
+                    if column_letter:
+                        cell_range = f'{column_letter}2:{column_letter}{sheet.max_row}'
+                        rule = DataBarRule(start_type='min', end_type='max', color=Color(rgb=color_hex))
+                        sheet.conditional_formatting.add(cell_range, rule)
+
+                # Save the changes
+                workbook.save(filename)
+
+                break
+            except PermissionError:
+                # Handle permission error
+                print("Permission denied likely due to file currently being open. Generating a new file name...")
+                counter += 1
+
+        return final_df
+
+
+    def plot(self, df):
+        
+        plot_target_list = ['CT', '2^-CT','RPL27_dCT', 'RPL27_2^-dCT', 'ddCT', '2^-ddCT']
+
+        # Get a sorted list of unique tissues
+        subset_label = 'Target Name'
+        subset_metric = sorted(set(df[subset_label]))
+        # Determine the layout of the subplots (you can adjust the layout as necessary)
+        nrows = int(np.ceil(np.sqrt(len(subset_metric))))
+        ncols = int(np.ceil(len(subset_metric) / nrows))
+
+        for plot_target in plot_target_list:
+            print(f"Plotting for target: {plot_target}")  # Debugging statement
+            no_RT = True  # Reset no_RT for each plot target
+            if 'dCT' in plot_target:
+                no_RT = False
+
+            fig, axes = plt.subplots(nrows, ncols, figsize=(20, 16))
+            axes = axes.flatten()
+
+            for idx, tissue in enumerate(subset_metric):
+                data = df[df[subset_label] == tissue]
+                if no_RT == False:
+                    data = data[data['RT+'] == 'yes']
+
+                if data.empty:
+                    print(f"No data for {plot_target} in {tissue}")  # Debugging statement
+                    continue
+
+                medians = {label: data.loc[data['Full_id'] == label, plot_target].tolist()
+                        for label in sorted(set(data['Full_id']))}
+
+                x_labels = [s.split('_')[0] + '_' + s.split('_')[1] for s in medians.keys()]
+
+                ax = axes[idx]
+                positions = range(1, len(medians) + 1)
+                for pos, (sample_type, values) in zip(positions, medians.items()):
+                    ax.boxplot(values, positions=[pos], widths=0.6)
+                    ax.plot([pos] * len(values), values, 'ro')
+
+                ax.set_title(tissue, fontsize=20)  # Increase title font size
+                ax.set_xticks(positions)
+                ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=15)  # Increase x-tick label font size
+                ax.set_ylabel(plot_target, fontsize=16)  # Increase y-label font size
+                ax.tick_params(axis='y', labelsize=16)  # Increase y-tick label font size
+
+
+            fig.tight_layout()
+
+            plt.savefig(self.output_directory + f'\\{plot_target}.png')
+            
+class Test:
+    def __init__(self):
+
+        base_dir = 'C:\\Users\\crobbins\\OneDrive - Fred Hutchinson Cancer Research Center\\qPCR\\3RACE\\20231124_G401_pulldown_validation\\'
+        self.input_file = base_dir + '2023-11-28_G401_pulldown_validation.xlsx'
+        self.output_directory = base_dir + 'Out'
+        self.rep_labels = base_dir + 'Labels.xlsx'
+        self.ddct_flavor = 2
+        self.parental_control_check = False
+        self.bio_rep_num = 3
+
+if __name__ == "__main__":
+
+    # ui_input = MainUI()
+    ui_input = Test()
+
+    analyzed = Analyze(ui_input.input_file, ui_input.output_directory, ui_input.rep_labels, ui_input.ddct_flavor, ui_input.bio_rep_num, ui_input.parental_control_check)
